@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Constraint Solver - Explorable Explanation</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        
+        .mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        
+        /* Brett Victor-style draggable values */
+        .draggable-value {
+            display: inline-block;
+            padding: 2px 8px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border-radius: 4px;
+            cursor: ew-resize;
+            user-select: none;
+            font-weight: 600;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .draggable-value:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+        
+        .draggable-value:active {
+            transform: scale(0.95);
+        }
+        
+        .draggable-value::before,
+        .draggable-value::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 4px;
+            height: 1px;
+            background: white;
+            opacity: 0.5;
+        }
+        
+        .draggable-value::before {
+            left: 3px;
+            transform: translateY(-50%) rotate(45deg);
+        }
+        
+        .draggable-value::after {
+            right: 3px;
+            transform: translateY(-50%) rotate(-45deg);
+        }
+        
+        /* WebGL-inspired particle system */
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: particle-float 3s infinite ease-in-out;
+        }
+        
+        @keyframes particle-float {
+            0%, 100% {
+                transform: translateY(0) translateX(0);
+                opacity: 0;
+            }
+            20% {
+                opacity: 1;
+            }
+            80% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) translateX(var(--drift));
+                opacity: 0;
+            }
+        }
+        
+        /* Constraint node visualization */
+        .constraint-node {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: radial-gradient(circle at 30% 30%, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.1));
+            border: 2px solid rgba(59, 130, 246, 0.5);
+        }
+        
+        .constraint-node.satisfied {
+            background: radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.3), rgba(16, 185, 129, 0.1));
+            border-color: rgba(34, 197, 94, 0.5);
+            box-shadow: 0 0 40px rgba(34, 197, 94, 0.4);
+        }
+        
+        .constraint-node.violated {
+            background: radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.1));
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 0 40px rgba(239, 68, 68, 0.4);
+        }
+        
+        .constraint-node:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Connection lines */
+        .connection-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(59, 130, 246, 0.5) 20%, 
+                rgba(59, 130, 246, 0.5) 80%, 
+                transparent);
+            transform-origin: left center;
+            pointer-events: none;
+            animation: pulse-line 2s infinite;
+        }
+        
+        @keyframes pulse-line {
+            0%, 100% {
+                opacity: 0.3;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+        
+        .connection-line.active {
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(34, 197, 94, 0.8) 20%, 
+                rgba(34, 197, 94, 0.8) 80%, 
+                transparent);
+            height: 3px;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+        
+        /* Feasibility matrix cells */
+        .matrix-cell {
+            position: relative;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            overflow: hidden;
+        }
+        
+        .matrix-cell::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.4), transparent 70%);
+            transform: translate(-50%, -50%);
+            transition: all 0.4s;
+            pointer-events: none;
+        }
+        
+        .matrix-cell:hover::before {
+            width: 150%;
+            height: 150%;
+        }
+        
+        .matrix-cell.feasible {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+            animation: cell-glow 2s infinite;
+        }
+        
+        @keyframes cell-glow {
+            0%, 100% {
+                box-shadow: 0 0 5px rgba(34, 197, 94, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+            }
+        }
+        
+        .matrix-cell.blocked {
+            background: rgba(239, 68, 68, 0.05);
+            border-color: rgba(239, 68, 68, 0.2);
+            opacity: 0.5;
+        }
+        
+        /* Interactive equation */
+        .equation-part {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        
+        .equation-part:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .equation-part.variable {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.3));
+            border-color: rgba(59, 130, 246, 0.4);
+        }
+        
+        .equation-part.operator {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(139, 92, 246, 0.3));
+            border-color: rgba(168, 85, 247, 0.4);
+            font-weight: 600;
+        }
+        
+        .equation-part.result {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.3));
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+        
+        /* Flow visualization */
+        .flow-container {
+            position: relative;
+            height: 400px;
+            background: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.05), transparent 70%);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        
+        .flow-particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.8), transparent);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        /* Score visualization */
+        .score-ring {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+        
+        .score-ring svg {
+            transform: rotate(-90deg);
+        }
+        
+        .score-ring-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 20;
+        }
+        
+        .score-ring-progress {
+            fill: none;
+            stroke: url(#gradient);
+            stroke-width: 20;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Interactive timeline */
+        .timeline-item {
+            position: relative;
+            padding-left: 40px;
+            padding-bottom: 30px;
+        }
+        
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.5), transparent);
+        }
+        
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: 4px;
+            top: 4px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #3b82f6, #2563eb);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+        
+        .timeline-item.active::after {
+            animation: timeline-pulse 2s infinite;
+        }
+        
+        @keyframes timeline-pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            }
+            50% {
+                transform: scale(1.2);
+                box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        
+        // Main App
+        function App() {
+            const [activeView, setActiveView] = useState('flow');
+            const [constraintValues, setConstraintValues] = useState({
+                tutors: 5,
+                students: 8,
+                slots: 30,
+                courses: 3
+            });
+            const [particles, setParticles] = useState([]);
+            const canvasRef = useRef(null);
+            
+            // Generate particles for background
+            useEffect(() => {
+                const newParticles = Array.from({ length: 20 }, (_, i) => ({
+                    id: i,
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    drift: (Math.random() - 0.5) * 100
+                }));
+                setParticles(newParticles);
+            }, []);
+            
+            return (
+                <div className="min-h-screen relative">
+                    {/* Particle Background */}
+                    <div className="fixed inset-0 pointer-events-none">
+                        {particles.map(p => (
+                            <div
+                                key={p.id}
+                                className="particle"
+                                style={{
+                                    left: p.x,
+                                    top: p.y,
+                                    '--drift': `${p.drift}px`,
+                                    animationDelay: `${p.id * 0.2}s`
+                                }}
+                            />
+                        ))}
+                    </div>
+                    
+                    {/* Header */}
+                    <header className="relative z-10 p-8 text-center">
+                        <h1 className="text-6xl font-bold mb-4">
+                            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                Constraint Solver
+                            </span>
+                        </h1>
+                        <p className="text-xl text-gray-400 mb-2">
+                            An Explorable Explanation
+                        </p>
+                        <p className="text-sm text-gray-500 mono">
+                            Drag values • Explore constraints • See solutions emerge
+                        </p>
+                    </header>
+                    
+                    {/* Navigation */}
+                    <nav className="flex justify-center gap-8 mb-12">
+                        {['flow', 'matrix', 'ranking', 'timeline'].map(view => (
+                            <button
+                                key={view}
+                                onClick={() => setActiveView(view)}
+                                className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                                    activeView === view
+                                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                }`}
+                            >
+                                {view.charAt(0).toUpperCase() + view.slice(1)}
+                            </button>
+                        ))}
+                    </nav>
+                    
+                    {/* Content */}
+                    <div className="max-w-7xl mx-auto px-8 pb-16">
+                        {activeView === 'flow' && (
+                            <ConstraintFlow values={constraintValues} setValues={setConstraintValues} />
+                        )}
+                        {activeView === 'matrix' && (
+                            <FeasibilityMatrix values={constraintValues} />
+                        )}
+                        {activeView === 'ranking' && (
+                            <RankingVisualization />
+                        )}
+                        {activeView === 'timeline' && (
+                            <BookingTimeline />
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Constraint Flow Visualization
+        function ConstraintFlow({ values, setValues }) {
+            const [nodes, setNodes] = useState([
+                { id: 'input', x: 100, y: 200, label: 'Facts', type: 'input' },
+                { id: 'constraint1', x: 300, y: 100, label: 'Teaches', type: 'constraint' },
+                { id: 'constraint2', x: 300, y: 200, label: 'Available', type: 'constraint' },
+                { id: 'constraint3', x: 300, y: 300, label: 'No Conflicts', type: 'constraint' },
+                { id: 'output', x: 500, y: 200, label: 'Feasible', type: 'output' }
+            ]);
+            const [flowParticles, setFlowParticles] = useState([]);
+            const [draggedNode, setDraggedNode] = useState(null);
+            const containerRef = useRef(null);
+            
+            // Generate flow particles
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setFlowParticles(prev => {
+                        const newParticles = prev.filter(p => p.progress < 100);
+                        if (Math.random() > 0.5) {
+                            newParticles.push({
+                                id: Date.now(),
+                                startNode: 'input',
+                                endNode: `constraint${Math.ceil(Math.random() * 3)}`,
+                                progress: 0
+                            });
+                        }
+                        return newParticles.map(p => ({
+                            ...p,
+                            progress: p.progress + 2
+                        }));
+                    });
+                }, 50);
+                return () => clearInterval(interval);
+            }, []);
+            
+            const handleDrag = useCallback((e, nodeId) => {
+                if (!draggedNode) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                setNodes(prev => prev.map(n => 
+                    n.id === nodeId 
+                        ? { ...n, x: e.clientX - rect.left, y: e.clientY - rect.top }
+                        : n
+                ));
+            }, [draggedNode]);
+            
+            // Calculate feasible options
+            const feasibleOptions = useMemo(() => {
+                const tutorCanTeach = values.tutors * values.courses * 0.6;
+                const studentNeeds = values.students * 1.2;
+                const availability = values.slots * 0.7;
+                const conflicts = availability * 0.2;
+                
+                return Math.floor(Math.min(
+                    tutorCanTeach,
+                    studentNeeds,
+                    availability - conflicts
+                ) * 2.5);
+            }, [values]);
+            
+            return (
+                <div className="space-y-8">
+                    {/* Interactive Equation */}
+                    <div className="bg-gray-900/50 p-8 rounded-2xl backdrop-blur">
+                        <h3 className="text-2xl font-bold mb-6">Constraint Equation</h3>
+                        <div className="flex flex-wrap items-center justify-center text-lg">
+                            <span className="equation-part variable">
+                                <span className="text-gray-400 text-sm block">tutors</span>
+                                <DraggableValue 
+                                    value={values.tutors} 
+                                    onChange={(v) => setValues({...values, tutors: v})}
+                                    min={1} max={20}
+                                />
+                            </span>
+                            <span className="equation-part operator">×</span>
+                            <span className="equation-part variable">
+                                <span className="text-gray-400 text-sm block">slots</span>
+                                <DraggableValue 
+                                    value={values.slots} 
+                                    onChange={(v) => setValues({...values, slots: v})}
+                                    min={10} max={100}
+                                />
+                            </span>
+                            <span className="equation-part operator">×</span>
+                            <span className="equation-part variable">
+                                <span className="text-gray-400 text-sm block">courses</span>
+                                <DraggableValue 
+                                    value={values.courses} 
+                                    onChange={(v) => setValues({...values, courses: v})}
+                                    min={1} max={10}
+                                />
+                            </span>
+                            <span className="equation-part operator">→</span>
+                            <span className="equation-part result">
+                                <span className="text-gray-400 text-sm block">feasible</span>
+                                <span className="text-2xl font-bold">{feasibleOptions}</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    {/* Flow Visualization */}
+                    <div className="bg-gray-900/50 p-8 rounded-2xl backdrop-blur">
+                        <h3 className="text-2xl font-bold mb-6">Constraint Flow Network</h3>
+                        <div 
+                            ref={containerRef}
+                            className="flow-container relative"
+                            style={{ height: '400px' }}
+                        >
+                            {/* Connection Lines */}
+                            {nodes.map(startNode => 
+                                nodes.map(endNode => {
+                                    if (
+                                        (startNode.id === 'input' && endNode.type === 'constraint') ||
+                                        (startNode.type === 'constraint' && endNode.id === 'output')
+                                    ) {
+                                        const dx = endNode.x - startNode.x;
+                                        const dy = endNode.y - startNode.y;
+                                        const length = Math.sqrt(dx * dx + dy * dy);
+                                        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                                        
+                                        return (
+                                            <div
+                                                key={`${startNode.id}-${endNode.id}`}
+                                                className="connection-line"
+                                                style={{
+                                                    left: startNode.x + 60,
+                                                    top: startNode.y + 60,
+                                                    width: length,
+                                                    transform: `rotate(${angle}deg)`
+                                                }}
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })
+                            )}
+                            
+                            {/* Nodes */}
+                            {nodes.map(node => (
+                                <div
+                                    key={node.id}
+                                    className={`constraint-node ${
+                                        node.type === 'output' && feasibleOptions > 50 ? 'satisfied' :
+                                        node.type === 'output' && feasibleOptions < 20 ? 'violated' : ''
+                                    }`}
+                                    style={{
+                                        left: node.x,
+                                        top: node.y,
+                                    }}
+                                    onMouseDown={() => setDraggedNode(node.id)}
+                                    onMouseMove={(e) => handleDrag(e, node.id)}
+                                    onMouseUp={() => setDraggedNode(null)}
+                                    onMouseLeave={() => setDraggedNode(null)}
+                                >
+                                    <div className="text-center">
+                                        <div className="font-semibold">{node.label}</div>
+                                        {node.id === 'output' && (
+                                            <div className="text-2xl font-bold mt-1">
+                                                {feasibleOptions}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            
+                            {/* Flow Particles */}
+                            {flowParticles.map(particle => {
+                                const startNode = nodes.find(n => n.id === particle.startNode);
+                                const endNode = nodes.find(n => n.id === particle.endNode);
+                                if (!startNode || !endNode) return null;
+                                
+                                const x = startNode.x + (endNode.x - startNode.x) * (particle.progress / 100) + 60;
+                                const y = startNode.y + (endNode.y - startNode.y) * (particle.progress / 100) + 60;
+                                
+                                return (
+                                    <div
+                                        key={particle.id}
+                                        className="flow-particle"
+                                        style={{
+                                            left: x,
+                                            top: y,
+                                            opacity: 1 - particle.progress / 100
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+                    
+                    {/* Live Statistics */}
+                    <div className="grid grid-cols-4 gap-4">
+                        <StatCard 
+                            label="Total Possibilities"
+                            value={values.tutors * values.students * values.slots}
+                            color="blue"
+                        />
+                        <StatCard 
+                            label="After Constraints"
+                            value={feasibleOptions}
+                            color="green"
+                        />
+                        <StatCard 
+                            label="Reduction"
+                            value={`${(100 - (feasibleOptions / (values.tutors * values.students * values.slots) * 100)).toFixed(1)}%`}
+                            color="purple"
+                        />
+                        <StatCard 
+                            label="Efficiency"
+                            value={`${(feasibleOptions / values.students).toFixed(1)}x`}
+                            color="pink"
+                        />
+                    </div>
+                </div>
+            );
+        }
+        
+        // Draggable Value Component (Brett Victor style)
+        function DraggableValue({ value, onChange, min = 0, max = 100 }) {
+            const [isDragging, setIsDragging] = useState(false);
+            const [startX, setStartX] = useState(0);
+            const [startValue, setStartValue] = useState(value);
+            
+            const handleMouseDown = useCallback((e) => {
+                setIsDragging(true);
+                setStartX(e.clientX);
+                setStartValue(value);
+                e.preventDefault();
+            }, [value]);
+            
+            const handleMouseMove = useCallback((e) => {
+                if (!isDragging) return;
+                const delta = e.clientX - startX;
+                const newValue = Math.round(startValue + delta / 10);
+                onChange(Math.max(min, Math.min(max, newValue)));
+            }, [isDragging, startX, startValue, onChange, min, max]);
+            
+            const handleMouseUp = useCallback(() => {
+                setIsDragging(false);
+            }, []);
+            
+            useEffect(() => {
+                if (isDragging) {
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                    return () => {
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                    };
+                }
+            }, [isDragging, handleMouseMove, handleMouseUp]);
+            
+            return (
+                <span 
+                    className="draggable-value"
+                    onMouseDown={handleMouseDown}
+                    style={{ cursor: isDragging ? 'ew-resize' : 'grab' }}
+                >
+                    {value}
+                </span>
+            );
+        }
+        
+        // Stat Card Component
+        function StatCard({ label, value, color }) {
+            const colorClasses = {
+                blue: 'from-blue-500 to-blue-600',
+                green: 'from-green-500 to-green-600',
+                purple: 'from-purple-500 to-purple-600',
+                pink: 'from-pink-500 to-pink-600'
+            };
+            
+            return (
+                <div className="bg-gray-900/50 p-6 rounded-xl backdrop-blur">
+                    <div className="text-sm text-gray-400 mb-2">{label}</div>
+                    <div className={`text-3xl font-bold bg-gradient-to-r ${colorClasses[color]} bg-clip-text text-transparent`}>
+                        {value}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Feasibility Matrix Visualization
+        function FeasibilityMatrix({ values }) {
+            const [hoveredCell, setHoveredCell] = useState(null);
+            const [selectedConstraint, setSelectedConstraint] = useState('all');
+            
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+            const timeSlots = ['8:00', '9:00', '10:00', '11:00', '12:00', '1:00', '2:00', '3:00'];
+            
+            const constraints = [
+                { id: 'teaches', label: 'Teaches Course', color: 'blue' },
+                { id: 'available', label: 'Tutor Available', color: 'green' },
+                { id: 'student_available', label: 'Student Available', color: 'purple' },
+                { id: 'no_conflict', label: 'No Conflicts', color: 'orange' }
+            ];
+            
+            const checkConstraint = useCallback((day, slot, constraint) => {
+                // Simulate constraint checking
+                const random = Math.random();
+                switch(constraint) {
+                    case 'teaches': return random > 0.3;
+                    case 'available': return random > 0.4;
+                    case 'student_available': return random > 0.2;
+                    case 'no_conflict': return random > 0.1;
+                    case 'all': return random > 0.6;
+                    default: return false;
+                }
+            }, []);
+            
+            return (
+                <div className="space-y-8">
+                    <div className="bg-gray-900/50 p-8 rounded-2xl backdrop-blur">
+                        <h3 className="text-2xl font-bold mb-6">Feasibility Matrix Explorer</h3>
+                        
+                        {/* Constraint Selector */}
+                        <div className="flex gap-2 mb-6">
+                            <button
+                                onClick={() => setSelectedConstraint('all')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                    selectedConstraint === 'all'
+                                        ? 'bg-white text-black'
+                                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                }`}
+                            >
+                                All Constraints
+                            </button>
+                            {constraints.map(c => (
+                                <button
+                                    key={c.id}
+                                    onClick={() => setSelectedConstraint(c.id)}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                        selectedConstraint === c.id
+                                            ? 'bg-white text-black'
+                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {c.label}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        {/* Matrix Grid */}
+                        <div className="overflow-x-auto">
+                            <div className="grid grid-cols-9 gap-1 min-w-[600px]">
+                                {/* Header */}
+                                <div></div>
+                                {timeSlots.map(time => (
+                                    <div key={time} className="text-center text-sm text-gray-400 p-2">
+                                        {time}
+                                    </div>
+                                ))}
+                                
+                                {/* Rows */}
+                                {days.map(day => (
+                                    <React.Fragment key={day}>
+                                        <div className="text-right text-sm text-gray-400 p-2">
+                                            {day}
+                                        </div>
+                                        {timeSlots.map(time => {
+                                            const cellKey = `${day}-${time}`;
+                                            const isFeasible = checkConstraint(day, time, selectedConstraint);
+                                            const isHovered = hoveredCell === cellKey;
+                                            
+                                            return (
+                                                <div
+                                                    key={cellKey}
+                                                    className={`matrix-cell h-12 ${
+                                                        isFeasible ? 'feasible' : 'blocked'
+                                                    }`}
+                                                    onMouseEnter={() => setHoveredCell(cellKey)}
+                                                    onMouseLeave={() => setHoveredCell(null)}
+                                                    style={{
+                                                        transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+                                                        zIndex: isHovered ? 10 : 1
+                                                    }}
+                                                />
+                                            );
+                                        })}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Legend */}
+                        <div className="mt-6 flex items-center justify-between">
+                            <div className="flex gap-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded bg-green-500/30"></div>
+                                    <span className="text-sm text-gray-400">Feasible</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded bg-red-500/20"></div>
+                                    <span className="text-sm text-gray-400">Blocked</span>
+                                </div>
+                            </div>
+                            <div className="text-sm text-gray-400">
+                                Hover to explore • Click to inspect
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Constraint Details */}
+                    <div className="grid grid-cols-4 gap-4">
+                        {constraints.map(c => (
+                            <div key={c.id} className="bg-gray-900/50 p-4 rounded-xl backdrop-blur">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className={`w-3 h-3 rounded-full bg-${c.color}-500`}></div>
+                                    <span className="font-medium">{c.label}</span>
+                                </div>
+                                <div className="text-2xl font-bold">
+                                    {Math.floor(Math.random() * 30 + 50)}%
+                                </div>
+                                <div className="text-xs text-gray-400">satisfaction rate</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Ranking Visualization
+        function RankingVisualization() {
+            const [weights, setWeights] = useState({
+                preference: 30,
+                time: 25,
+                explicit: 20,
+                load: 15,
+                satisfaction: 10
+            });
+            
+            const factors = [
+                { key: 'preference', label: 'Tutor Preference', color: '#3b82f6' },
+                { key: 'time', label: 'Time Pattern', color: '#8b5cf6' },
+                { key: 'explicit', label: 'Explicit Time', color: '#ec4899' },
+                { key: 'load', label: 'Load Balance', color: '#10b981' },
+                { key: 'satisfaction', label: 'Satisfaction', color: '#f59e0b' }
+            ];
+            
+            const totalScore = Object.values(weights).reduce((a, b) => a + b, 0);
+            const circumference = 2 * Math.PI * 80;
+            const offset = circumference - (totalScore / 100) * circumference;
+            
+            return (
+                <div className="space-y-8">
+                    <div className="bg-gray-900/50 p-8 rounded-2xl backdrop-blur">
+                        <h3 className="text-2xl font-bold mb-6">Ranking Algorithm Breakdown</h3>
+                        
+                        <div className="grid grid-cols-2 gap-8">
+                            {/* Score Ring */}
+                            <div className="flex justify-center items-center">
+                                <div className="score-ring">
+                                    <svg width="200" height="200">
+                                        <defs>
+                                            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stopColor="#3b82f6" />
+                                                <stop offset="100%" stopColor="#8b5cf6" />
+                                            </linearGradient>
+                                        </defs>
+                                        <circle
+                                            cx="100"
+                                            cy="100"
+                                            r="80"
+                                            className="score-ring-bg"
+                                        />
+                                        <circle
+                                            cx="100"
+                                            cy="100"
+                                            r="80"
+                                            className="score-ring-progress"
+                                            style={{
+                                                strokeDasharray: circumference,
+                                                strokeDashoffset: offset
+                                            }}
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className="text-4xl font-bold">{totalScore}</div>
+                                            <div className="text-sm text-gray-400">Total Score</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Weight Controls */}
+                            <div className="space-y-4">
+                                {factors.map(factor => (
+                                    <div key={factor.key}>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-sm font-medium">{factor.label}</span>
+                                            <DraggableValue
+                                                value={weights[factor.key]}
+                                                onChange={(v) => setWeights({...weights, [factor.key]: v})}
+                                                min={0}
+                                                max={40}
+                                            />
+                                        </div>
+                                        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full transition-all duration-500"
+                                                style={{
+                                                    width: `${(weights[factor.key] / 40) * 100}%`,
+                                                    background: factor.color
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Live Formula */}
+                        <div className="mt-8 p-4 bg-gray-800/50 rounded-lg">
+                            <div className="mono text-sm text-green-400">
+                                score = {factors.map(f => `${f.label}(${weights[f.key]})`).join(' + ')} = {totalScore}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Booking Timeline
+        function BookingTimeline() {
+            const [currentPhase, setCurrentPhase] = useState(1);
+            
+            const phases = [
+                {
+                    id: 1,
+                    title: 'Input Facts',
+                    description: 'Student preferences, tutor availability, course requirements',
+                    time: '0ms'
+                },
+                {
+                    id: 2,
+                    title: 'Apply Constraints',
+                    description: 'Filter through Datalog rules: teaches, available, no conflicts',
+                    time: '12ms'
+                },
+                {
+                    id: 3,
+                    title: 'Generate Feasible Set',
+                    description: '75 feasible (student, tutor, day, slot) tuples created',
+                    time: '24ms'
+                },
+                {
+                    id: 4,
+                    title: 'Rank Options',
+                    description: 'Apply 5-factor ranking algorithm to sort options',
+                    time: '8ms'
+                },
+                {
+                    id: 5,
+                    title: 'Present Top 3',
+                    description: 'Show best matches with explanations to student',
+                    time: '2ms'
+                },
+                {
+                    id: 6,
+                    title: 'Student Choice',
+                    description: '85.7% pick their first recommendation',
+                    time: '∞'
+                }
+            ];
+            
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setCurrentPhase(p => p >= 6 ? 1 : p + 1);
+                }, 2000);
+                return () => clearInterval(interval);
+            }, []);
+            
+            return (
+                <div className="space-y-8">
+                    <div className="bg-gray-900/50 p-8 rounded-2xl backdrop-blur">
+                        <h3 className="text-2xl font-bold mb-6">Booking Flow Timeline</h3>
+                        
+                        <div className="space-y-0">
+                            {phases.map((phase, index) => (
+                                <div
+                                    key={phase.id}
+                                    className={`timeline-item ${currentPhase === phase.id ? 'active' : ''}`}
+                                    style={{ opacity: currentPhase >= phase.id ? 1 : 0.3 }}
+                                >
+                                    <div className="bg-gray-800/50 p-4 rounded-lg">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="font-semibold text-lg">{phase.title}</h4>
+                                            <span className="text-sm text-blue-400 mono">{phase.time}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-400">{phase.description}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <div className="mt-8 p-4 bg-gray-800/50 rounded-lg">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-400">Total Processing Time</span>
+                                <span className="text-xl font-bold text-green-400">46ms</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutoring Scheduler - Interactive Prototype Suite</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            overflow-x: hidden;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Brett Victor-inspired direct manipulation handles */
+        .handle {
+            cursor: grab;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .handle:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        
+        /* Steve Wittens-inspired WebGL-like effects */
+        @keyframes glow {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .glow {
+            animation: glow 2s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .float {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        /* Constraint visualization grid */
+        .constraint-grid {
+            display: grid;
+            gap: 2px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 2px;
+        }
+        
+        .constraint-cell {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .constraint-cell::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, transparent, rgba(100, 200, 255, 0.3), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s;
+        }
+        
+        .constraint-cell.feasible {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.3));
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+        }
+        
+        .constraint-cell.feasible::before {
+            transform: translateX(100%);
+        }
+        
+        .constraint-cell.blocked {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.2));
+            opacity: 0.5;
+        }
+        
+        .constraint-cell.selected {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.4));
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            transform: scale(1.05);
+        }
+        
+        /* Ranking visualization */
+        .rank-bar {
+            position: relative;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .rank-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .rank-gradient-1 {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+        
+        .rank-gradient-2 {
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+        }
+        
+        .rank-gradient-3 {
+            background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+        }
+        
+        .rank-gradient-4 {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+        
+        .rank-gradient-5 {
+            background: linear-gradient(90deg, #ec4899, #db2777);
+        }
+        
+        /* Interactive slider */
+        .slider {
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+            transition: background 0.3s;
+        }
+        
+        .slider:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 2px 10px rgba(59, 130, 246, 0.5);
+            transition: all 0.3s;
+        }
+        
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.7);
+        }
+        
+        .slider::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        
+        /* Tutor cards */
+        .tutor-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tutor-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), 
+                        rgba(59, 130, 246, 0.2), transparent 50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tutor-card:hover::before {
+            opacity: 1;
+        }
+        
+        .tutor-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+        
+        .tutor-card.selected {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.15));
+            border-color: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
+        }
+        
+        /* Time slot visualization */
+        .time-slot {
+            position: relative;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        
+        .time-slot-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, rgba(34, 197, 94, 0.3), rgba(16, 185, 129, 0.4));
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .time-slot:hover {
+            transform: scaleY(1.1);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        /* Loading animation */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Tab navigation */
+        .tab-button {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            font-weight: 500;
+        }
+        
+        .tab-button::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            transform: translateX(-50%);
+            transition: width 0.3s;
+        }
+        
+        .tab-button:hover {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .tab-button.active {
+            color: white;
+        }
+        
+        .tab-button.active::after {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        
+        // Sample data
+        const tutors = [
+            { id: 1, name: "Dr. Sarah Kim", subjects: ["Math", "Physics"], satisfaction: 92, utilization: 80 },
+            { id: 2, name: "James Liu", subjects: ["Physics", "Chemistry"], satisfaction: 88, utilization: 45 },
+            { id: 3, name: "Emma Rodriguez", subjects: ["Chemistry"], satisfaction: 85, utilization: 30 },
+            { id: 4, name: "Marcus Johnson", subjects: ["Math"], satisfaction: 90, utilization: 20 },
+            { id: 5, name: "Aisha Patel", subjects: ["Physics", "Math"], satisfaction: 94, utilization: 60 }
+        ];
+        
+        const students = [
+            { id: 'A', name: "Alex Chen", subject: "Math", preferredTutor: 1, preferredTime: "morning" },
+            { id: 'B', name: "Bailey Rivera", subject: "Physics", preferredTutor: 2, preferredTime: "afternoon" },
+            { id: 'C', name: "Charlie Kim", subject: "Chemistry", preferredTutor: null, preferredTime: "evening" },
+            { id: 'D', name: "Dana Patel", subject: "Math", preferredTutor: 4, preferredTime: "morning" },
+            { id: 'E', name: "Evan Zhang", subject: "Physics", preferredTutor: 5, preferredTime: "evening" }
+        ];
+        
+        const timeSlots = {
+            morning: ['8:00', '8:30', '9:00', '9:30', '10:00', '10:30', '11:00', '11:30'],
+            afternoon: ['12:00', '12:30', '1:00', '1:30', '2:00', '2:30', '3:00', '3:30'],
+            evening: ['4:00', '4:30', '5:00', '5:30', '6:00', '6:30', '7:00', '7:30']
+        };
+        
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        
+        // Main App Component
+        function App() {
+            const [activeTab, setActiveTab] = useState('constraints');
+            const [selectedStudent, setSelectedStudent] = useState(students[0]);
+            const [rankingWeights, setRankingWeights] = useState({
+                tutorPreference: 30,
+                timePattern: 25,
+                explicitTime: 20,
+                loadBalance: 15,
+                satisfaction: 10
+            });
+            const [hoveredSlot, setHoveredSlot] = useState(null);
+            const [selectedOptions, setSelectedOptions] = useState([]);
+            const [animationPhase, setAnimationPhase] = useState(0);
+            
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setAnimationPhase((p) => (p + 1) % 3);
+                }, 2000);
+                return () => clearInterval(interval);
+            }, []);
+            
+            const tabs = [
+                { id: 'constraints', label: 'Constraint Visualization', icon: '🔷' },
+                { id: 'ranking', label: 'Ranking Explorer', icon: '📊' },
+                { id: 'schedule', label: 'Student Scheduler', icon: '📅' },
+                { id: 'load', label: 'Tutor Load Balance', icon: '⚖️' }
+            ];
+            
+            return (
+                <div className="min-h-screen p-8">
+                    {/* Header */}
+                    <header className="text-center mb-12">
+                        <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                            Tutoring Scheduler
+                        </h1>
+                        <p className="text-xl text-gray-400">
+                            Interactive Constraint Solver & Scheduling System
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2 mono">
+                            Inspired by Brett Victor × Steve Wittens
+                        </p>
+                    </header>
+                    
+                    {/* Tab Navigation */}
+                    <nav className="flex justify-center mb-8 border-b border-gray-700">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                            >
+                                <span className="mr-2">{tab.icon}</span>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </nav>
+                    
+                    {/* Content */}
+                    <div className="max-w-7xl mx-auto">
+                        {activeTab === 'constraints' && (
+                            <ConstraintVisualization 
+                                student={selectedStudent}
+                                tutors={tutors}
+                                hoveredSlot={hoveredSlot}
+                                setHoveredSlot={setHoveredSlot}
+                                animationPhase={animationPhase}
+                            />
+                        )}
+                        
+                        {activeTab === 'ranking' && (
+                            <RankingExplorer 
+                                weights={rankingWeights}
+                                setWeights={setRankingWeights}
+                                student={selectedStudent}
+                                tutors={tutors}
+                            />
+                        )}
+                        
+                        {activeTab === 'schedule' && (
+                            <StudentScheduler 
+                                student={selectedStudent}
+                                setStudent={setSelectedStudent}
+                                students={students}
+                                tutors={tutors}
+                                weights={rankingWeights}
+                            />
+                        )}
+                        
+                        {activeTab === 'load' && (
+                            <TutorLoadBalance 
+                                tutors={tutors}
+                                students={students}
+                            />
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Constraint Visualization Component
+        function ConstraintVisualization({ student, tutors, hoveredSlot, setHoveredSlot, animationPhase }) {
+            const checkFeasibility = useCallback((tutor, day, slot) => {
+                // Check if tutor teaches student's subject
+                if (!tutor.subjects.includes(student.subject)) return false;
+                
+                // Simulate some availability constraints
+                if (tutor.utilization > 70 && Math.random() > 0.3) return false;
+                
+                // Time preference matching
+                const timeOfDay = slot < 8 ? 'morning' : slot < 16 ? 'afternoon' : 'evening';
+                if (student.preferredTime === timeOfDay) return Math.random() > 0.2;
+                
+                return Math.random() > 0.5;
+            }, [student]);
+            
+            return (
+                <div className="space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold mb-2">Constraint Solver Visualization</h2>
+                        <p className="text-gray-400">
+                            Exploring feasible (student, tutor, day, slot) combinations for {student.name}
+                        </p>
+                    </div>
+                    
+                    <div className="bg-gray-900 bg-opacity-50 p-6 rounded-2xl">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Constraint Rules */}
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4 text-blue-400">Active Constraints</h3>
+                                <div className="space-y-3">
+                                    <ConstraintRule 
+                                        label="Subject Match"
+                                        description={`Tutor must teach ${student.subject}`}
+                                        satisfied={true}
+                                        phase={animationPhase === 0}
+                                    />
+                                    <ConstraintRule 
+                                        label="Availability"
+                                        description="Tutor must be available at time slot"
+                                        satisfied={true}
+                                        phase={animationPhase === 1}
+                                    />
+                                    <ConstraintRule 
+                                        label="No Conflicts"
+                                        description="Slot must not be already booked"
+                                        satisfied={true}
+                                        phase={animationPhase === 2}
+                                    />
+                                    <ConstraintRule 
+                                        label="Time Preference"
+                                        description={`Student prefers ${student.preferredTime}`}
+                                        satisfied={true}
+                                        soft={true}
+                                    />
+                                </div>
+                            </div>
+                            
+                            {/* Feasibility Grid */}
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4 text-purple-400">Feasibility Matrix</h3>
+                                <div className="constraint-grid" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
+                                    {tutors.map(tutor => (
+                                        <React.Fragment key={tutor.id}>
+                                            {days.map(day => {
+                                                const slotKey = `${tutor.id}-${day}`;
+                                                const isFeasible = checkFeasibility(tutor, day, 10);
+                                                const isHovered = hoveredSlot === slotKey;
+                                                const canTeach = tutor.subjects.includes(student.subject);
+                                                
+                                                return (
+                                                    <div
+                                                        key={slotKey}
+                                                        className={`constraint-cell p-3 cursor-pointer ${
+                                                            !canTeach ? 'blocked' :
+                                                            isFeasible ? 'feasible' : ''
+                                                        } ${isHovered ? 'selected' : ''}`}
+                                                        onMouseEnter={() => setHoveredSlot(slotKey)}
+                                                        onMouseLeave={() => setHoveredSlot(null)}
+                                                    >
+                                                        <div className="text-xs font-semibold">
+                                                            {tutor.name.split(' ')[1]}
+                                                        </div>
+                                                        <div className="text-xs opacity-60">{day}</div>
+                                                        {isFeasible && canTeach && (
+                                                            <div className="text-xs text-green-400 mt-1">✓</div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                                
+                                <div className="mt-4 text-sm text-gray-400">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded bg-gradient-to-r from-green-500/30 to-emerald-500/40"></div>
+                                            <span>Feasible</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded bg-red-500/20"></div>
+                                            <span>Blocked</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Live Datalog Query */}
+                        <div className="mt-8 p-4 bg-gray-800 rounded-lg">
+                            <h4 className="text-sm font-semibold text-green-400 mb-2 mono">DATALOG QUERY</h4>
+                            <pre className="text-xs mono text-gray-300">
+{`feasible(${student.id}, T, D, SL) :-
+    student_wants(${student.id}, "${student.subject}", 1),
+    teaches(T, "${student.subject}"),
+    available(T, D, SL),
+    student_available(${student.id}, D, SL),
+    !existing_booking(T, D, SL).`}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Constraint Rule Component
+        function ConstraintRule({ label, description, satisfied, soft = false, phase = false }) {
+            return (
+                <div className={`flex items-center justify-between p-3 rounded-lg bg-gray-800/50 border ${
+                    phase ? 'border-blue-500/50 glow' : 'border-gray-700'
+                } transition-all duration-500`}>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{label}</span>
+                            {soft && (
+                                <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full">
+                                    SOFT
+                                </span>
+                            )}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{description}</div>
+                    </div>
+                    <div className={`text-xl ${satisfied ? 'text-green-400' : 'text-red-400'}`}>
+                        {satisfied ? '✓' : '✗'}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Ranking Explorer Component
+        function RankingExplorer({ weights, setWeights, student, tutors }) {
+            const [selectedTutor, setSelectedTutor] = useState(tutors[0]);
+            
+            const calculateScore = useCallback((tutor) => {
+                let score = 0;
+                
+                // Tutor preference
+                if (student.preferredTutor === tutor.id) {
+                    score += weights.tutorPreference;
+                }
+                
+                // Time pattern (simulated)
+                score += weights.timePattern * 0.8;
+                
+                // Explicit time preference
+                score += weights.explicitTime * 0.7;
+                
+                // Load balance
+                const loadFactor = 1 - (tutor.utilization / 100);
+                score += weights.loadBalance * loadFactor;
+                
+                // Satisfaction
+                score += weights.satisfaction * (tutor.satisfaction / 100);
+                
+                return Math.min(100, score);
+            }, [weights, student]);
+            
+            const rankedTutors = useMemo(() => {
+                return tutors
+                    .filter(t => t.subjects.includes(student.subject))
+                    .map(t => ({ ...t, score: calculateScore(t) }))
+                    .sort((a, b) => b.score - a.score);
+            }, [tutors, student, calculateScore]);
+            
+            return (
+                <div className="space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold mb-2">Ranking Algorithm Explorer</h2>
+                        <p className="text-gray-400">
+                            Adjust weights to see how recommendations change for {student.name}
+                        </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Weight Sliders */}
+                        <div className="bg-gray-900/50 p-6 rounded-2xl">
+                            <h3 className="text-xl font-semibold mb-6 text-blue-400">Ranking Weights</h3>
+                            <div className="space-y-6">
+                                <WeightSlider
+                                    label="Tutor Preference"
+                                    value={weights.tutorPreference}
+                                    onChange={(v) => setWeights({...weights, tutorPreference: v})}
+                                    color="1"
+                                />
+                                <WeightSlider
+                                    label="Time Pattern Match"
+                                    value={weights.timePattern}
+                                    onChange={(v) => setWeights({...weights, timePattern: v})}
+                                    color="2"
+                                />
+                                <WeightSlider
+                                    label="Explicit Time Preference"
+                                    value={weights.explicitTime}
+                                    onChange={(v) => setWeights({...weights, explicitTime: v})}
+                                    color="3"
+                                />
+                                <WeightSlider
+                                    label="Load Balance"
+                                    value={weights.loadBalance}
+                                    onChange={(v) => setWeights({...weights, loadBalance: v})}
+                                    color="4"
+                                />
+                                <WeightSlider
+                                    label="Tutor Satisfaction"
+                                    value={weights.satisfaction}
+                                    onChange={(v) => setWeights({...weights, satisfaction: v})}
+                                    color="5"
+                                />
+                            </div>
+                            
+                            <div className="mt-6 pt-6 border-t border-gray-700">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-400">Total Weight</span>
+                                    <span className="text-2xl font-bold text-white">
+                                        {Object.values(weights).reduce((a, b) => a + b, 0)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Ranking Results */}
+                        <div className="bg-gray-900/50 p-6 rounded-2xl">
+                            <h3 className="text-xl font-semibold mb-6 text-purple-400">Recommended Tutors</h3>
+                            <div className="space-y-4">
+                                {rankedTutors.map((tutor, index) => (
+                                    <TutorRankCard 
+                                        key={tutor.id}
+                                        tutor={tutor}
+                                        rank={index + 1}
+                                        score={tutor.score}
+                                        isSelected={selectedTutor.id === tutor.id}
+                                        onClick={() => setSelectedTutor(tutor)}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Score Breakdown */}
+                    {selectedTutor && (
+                        <div className="bg-gray-900/50 p-6 rounded-2xl">
+                            <h3 className="text-xl font-semibold mb-4 text-green-400">
+                                Score Breakdown: {selectedTutor.name}
+                            </h3>
+                            <ScoreBreakdown 
+                                tutor={selectedTutor}
+                                student={student}
+                                weights={weights}
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        // Weight Slider Component
+        function WeightSlider({ label, value, onChange, color }) {
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium">{label}</label>
+                        <span className="text-sm font-mono text-blue-400">{value}%</span>
+                    </div>
+                    <div className="relative">
+                        <input
+                            type="range"
+                            min="0"
+                            max="40"
+                            value={value}
+                            onChange={(e) => onChange(parseInt(e.target.value))}
+                            className="slider"
+                        />
+                        <div className="rank-bar h-4 mt-2 rounded">
+                            <div 
+                                className={`rank-fill rank-gradient-${color}`}
+                                style={{ width: `${(value / 40) * 100}%` }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Tutor Rank Card Component
+        function TutorRankCard({ tutor, rank, score, isSelected, onClick }) {
+            const getRankEmoji = (rank) => {
+                switch(rank) {
+                    case 1: return '🥇';
+                    case 2: return '🥈';
+                    case 3: return '🥉';
+                    default: return '🏅';
+                }
+            };
+            
+            return (
+                <div 
+                    className={`tutor-card ${isSelected ? 'selected' : ''}`}
+                    onClick={onClick}
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-start gap-4">
+                            <div className="text-3xl">{getRankEmoji(rank)}</div>
+                            <div>
+                                <h4 className="font-semibold text-lg">{tutor.name}</h4>
+                                <div className="flex gap-2 mt-1">
+                                    {tutor.subjects.map(s => (
+                                        <span key={s} className="text-xs px-2 py-1 bg-blue-500/20 text-blue-300 rounded">
+                                            {s}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-2xl font-bold">{score.toFixed(1)}</div>
+                            <div className="text-xs text-gray-400">/ 100</div>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="text-gray-400">Satisfaction:</span>
+                            <span className="ml-2 font-semibold">{tutor.satisfaction}%</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-400">Utilization:</span>
+                            <span className="ml-2 font-semibold">{tutor.utilization}%</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Score Breakdown Component
+        function ScoreBreakdown({ tutor, student, weights }) {
+            const factors = [
+                {
+                    name: 'Tutor Preference',
+                    weight: weights.tutorPreference,
+                    actual: student.preferredTutor === tutor.id ? weights.tutorPreference : 0,
+                    reason: student.preferredTutor === tutor.id ? 'Preferred tutor match' : 'Not preferred tutor'
+                },
+                {
+                    name: 'Time Pattern Match',
+                    weight: weights.timePattern,
+                    actual: weights.timePattern * 0.8,
+                    reason: 'Historical booking patterns'
+                },
+                {
+                    name: 'Explicit Time Preference',
+                    weight: weights.explicitTime,
+                    actual: weights.explicitTime * 0.7,
+                    reason: `Partial match with ${student.preferredTime}`
+                },
+                {
+                    name: 'Load Balance',
+                    weight: weights.loadBalance,
+                    actual: weights.loadBalance * (1 - tutor.utilization / 100),
+                    reason: `${tutor.utilization}% current utilization`
+                },
+                {
+                    name: 'Tutor Satisfaction',
+                    weight: weights.satisfaction,
+                    actual: weights.satisfaction * (tutor.satisfaction / 100),
+                    reason: `${tutor.satisfaction}% satisfaction rating`
+                }
+            ];
+            
+            const total = factors.reduce((sum, f) => sum + f.actual, 0);
+            
+            return (
+                <div className="space-y-3">
+                    {factors.map((factor, i) => (
+                        <div key={i} className="p-3 bg-gray-800/50 rounded-lg">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="font-medium">{factor.name}</span>
+                                <span className="text-sm">
+                                    <span className="font-bold text-blue-400">{factor.actual.toFixed(1)}</span>
+                                    <span className="text-gray-500"> / {factor.weight}</span>
+                                </span>
+                            </div>
+                            <div className="rank-bar h-2 rounded">
+                                <div 
+                                    className={`rank-fill rank-gradient-${i + 1}`}
+                                    style={{ width: `${(factor.actual / factor.weight) * 100}%` }}
+                                />
+                            </div>
+                            <div className="text-xs text-gray-400 mt-2">{factor.reason}</div>
+                        </div>
+                    ))}
+                    
+                    <div className="pt-4 border-t border-gray-700">
+                        <div className="flex justify-between items-center text-lg">
+                            <span className="font-semibold">Total Score</span>
+                            <span className="text-2xl font-bold text-green-400">{total.toFixed(1)}</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Student Scheduler Component
+        function StudentScheduler({ student, setStudent, students, tutors, weights }) {
+            const [selectedSlot, setSelectedSlot] = useState(null);
+            const [bookingStep, setBookingStep] = useState('select'); // select, confirm, booked
+            const [recommendations, setRecommendations] = useState([]);
+            
+            useEffect(() => {
+                // Generate recommendations based on current student
+                const eligible = tutors.filter(t => t.subjects.includes(student.subject));
+                const scored = eligible.map(t => {
+                    let score = 0;
+                    if (student.preferredTutor === t.id) score += weights.tutorPreference;
+                    score += weights.timePattern * 0.8;
+                    score += weights.explicitTime * 0.7;
+                    score += weights.loadBalance * (1 - t.utilization / 100);
+                    score += weights.satisfaction * (t.satisfaction / 100);
+                    
+                    return {
+                        ...t,
+                        score,
+                        day: days[Math.floor(Math.random() * days.length)],
+                        time: timeSlots.morning[Math.floor(Math.random() * timeSlots.morning.length)]
+                    };
+                });
+                
+                setRecommendations(scored.sort((a, b) => b.score - a.score).slice(0, 3));
+            }, [student, tutors, weights]);
+            
+            return (
+                <div className="space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold mb-2">Student Booking Interface</h2>
+                        <p className="text-gray-400">
+                            Book your next tutoring session
+                        </p>
+                    </div>
+                    
+                    {/* Student Selector */}
+                    <div className="bg-gray-900/50 p-4 rounded-xl">
+                        <label className="text-sm text-gray-400 mb-2 block">Select Student</label>
+                        <div className="flex gap-2">
+                            {students.map(s => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => {
+                                        setStudent(s);
+                                        setBookingStep('select');
+                                    }}
+                                    className={`px-4 py-2 rounded-lg transition-all ${
+                                        student.id === s.id 
+                                            ? 'bg-blue-500 text-white' 
+                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {s.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Booking Flow */}
+                    {bookingStep === 'select' && (
+                        <div>
+                            <h3 className="text-xl font-semibold mb-6 text-blue-400">
+                                Top Recommendations for {student.name}
+                            </h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {recommendations.map((rec, index) => (
+                                    <RecommendationCard
+                                        key={index}
+                                        recommendation={rec}
+                                        rank={index + 1}
+                                        onSelect={() => {
+                                            setSelectedSlot(rec);
+                                            setBookingStep('confirm');
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {bookingStep === 'confirm' && selectedSlot && (
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 p-8 rounded-2xl border border-blue-500/30">
+                                <h3 className="text-2xl font-bold mb-4 text-center">Confirm Booking</h3>
+                                <div className="space-y-4 text-lg">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">Tutor:</span>
+                                        <span className="font-semibold">{selectedSlot.name}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">Subject:</span>
+                                        <span className="font-semibold">{student.subject}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">Time:</span>
+                                        <span className="font-semibold">{selectedSlot.day} at {selectedSlot.time}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">Match Score:</span>
+                                        <span className="font-semibold text-green-400">{selectedSlot.score.toFixed(1)}/100</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex gap-4 mt-8">
+                                    <button
+                                        onClick={() => setBookingStep('booked')}
+                                        className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-purple-600 transition-all"
+                                    >
+                                        Confirm Booking
+                                    </button>
+                                    <button
+                                        onClick={() => setBookingStep('select')}
+                                        className="flex-1 py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-all"
+                                    >
+                                        Choose Different
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {bookingStep === 'booked' && (
+                        <div className="max-w-2xl mx-auto text-center">
+                            <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 p-8 rounded-2xl border border-green-500/30">
+                                <div className="text-6xl mb-4">✅</div>
+                                <h3 className="text-3xl font-bold mb-4 text-green-400">Booking Confirmed!</h3>
+                                <p className="text-lg text-gray-300 mb-6">
+                                    Your session with {selectedSlot?.name} has been booked for {selectedSlot?.day} at {selectedSlot?.time}
+                                </p>
+                                <button
+                                    onClick={() => setBookingStep('select')}
+                                    className="px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all"
+                                >
+                                    Book Another Session
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        // Recommendation Card Component
+        function RecommendationCard({ recommendation, rank, onSelect }) {
+            const getBadge = (rank) => {
+                switch(rank) {
+                    case 1: return { emoji: '🎯', label: 'PRIMARY MATCH', color: 'from-green-500 to-emerald-500' };
+                    case 2: return { emoji: '💡', label: 'ALSO GREAT', color: 'from-blue-500 to-indigo-500' };
+                    case 3: return { emoji: '✨', label: 'ALTERNATIVE', color: 'from-purple-500 to-pink-500' };
+                    default: return { emoji: '🏅', label: 'OPTION', color: 'from-gray-500 to-gray-600' };
+                }
+            };
+            
+            const badge = getBadge(rank);
+            
+            return (
+                <div className="bg-gray-900/50 rounded-2xl p-6 border border-gray-700 hover:border-blue-500/50 transition-all">
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r ${badge.color} text-white text-sm font-semibold mb-4`}>
+                        <span>{badge.emoji}</span>
+                        <span>{badge.label}</span>
+                    </div>
+                    
+                    <h4 className="text-xl font-bold mb-2">{recommendation.name}</h4>
+                    
+                    <div className="space-y-2 text-sm mb-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-400">📅</span>
+                            <span>{recommendation.day} at {recommendation.time}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-400">📚</span>
+                            <span>{recommendation.subjects.join(', ')}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-400">⭐</span>
+                            <span>{recommendation.satisfaction}% satisfaction</span>
+                        </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Match Score</span>
+                            <span className="font-semibold">{recommendation.score.toFixed(1)}/100</span>
+                        </div>
+                        <div className="rank-bar h-2 rounded">
+                            <div 
+                                className={`rank-fill bg-gradient-to-r ${badge.color}`}
+                                style={{ width: `${recommendation.score}%` }}
+                            />
+                        </div>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-800/50 rounded-lg mb-4">
+                        <div className="text-xs text-gray-400 mb-1">Why this match?</div>
+                        <ul className="text-xs space-y-1">
+                            <li>✓ Matches your usual time</li>
+                            <li>✓ High satisfaction rating</li>
+                            <li>✓ Available capacity</li>
+                        </ul>
+                    </div>
+                    
+                    <button
+                        onClick={onSelect}
+                        className="w-full py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-purple-600 transition-all"
+                    >
+                        Select This Option
+                    </button>
+                </div>
+            );
+        }
+        
+        // Tutor Load Balance Component
+        function TutorLoadBalance({ tutors, students }) {
+            const [hoveredTutor, setHoveredTutor] = useState(null);
+            const [selectedDay, setSelectedDay] = useState('Mon');
+            
+            return (
+                <div className="space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold mb-2">Tutor Load Visualization</h2>
+                        <p className="text-gray-400">
+                            Real-time utilization and availability monitoring
+                        </p>
+                    </div>
+                    
+                    <div className="bg-gray-900/50 p-6 rounded-2xl">
+                        {/* Day Selector */}
+                        <div className="flex gap-2 mb-6">
+                            {days.map(day => (
+                                <button
+                                    key={day}
+                                    onClick={() => setSelectedDay(day)}
+                                    className={`px-4 py-2 rounded-lg transition-all ${
+                                        selectedDay === day 
+                                            ? 'bg-blue-500 text-white' 
+                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {day}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        {/* Utilization Overview */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4 text-blue-400">Current Utilization</h3>
+                                <div className="space-y-4">
+                                    {tutors.map(tutor => (
+                                        <div 
+                                            key={tutor.id}
+                                            onMouseEnter={() => setHoveredTutor(tutor.id)}
+                                            onMouseLeave={() => setHoveredTutor(null)}
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-medium">{tutor.name}</span>
+                                                <span className={`text-sm font-semibold ${
+                                                    tutor.utilization > 70 ? 'text-red-400' :
+                                                    tutor.utilization > 40 ? 'text-yellow-400' :
+                                                    'text-green-400'
+                                                }`}>
+                                                    {tutor.utilization}%
+                                                </span>
+                                            </div>
+                                            <div className="time-slot">
+                                                <div 
+                                                    className={`time-slot-fill ${
+                                                        tutor.utilization > 70 ? 'bg-gradient-to-r from-red-500/30 to-red-600/40' :
+                                                        tutor.utilization > 40 ? 'bg-gradient-to-r from-yellow-500/30 to-yellow-600/40' :
+                                                        'bg-gradient-to-r from-green-500/30 to-green-600/40'
+                                                    }`}
+                                                    style={{ width: `${tutor.utilization}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {/* Load Balance Metrics */}
+                                <div className="mt-6 p-4 bg-gray-800/50 rounded-lg">
+                                    <h4 className="text-sm font-semibold text-green-400 mb-3">System Metrics</h4>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <div className="text-gray-400">Avg Utilization</div>
+                                            <div className="text-xl font-bold">
+                                                {(tutors.reduce((sum, t) => sum + t.utilization, 0) / tutors.length).toFixed(1)}%
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-400">Std Deviation</div>
+                                            <div className="text-xl font-bold">±12.3%</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-400">Overloaded</div>
+                                            <div className="text-xl font-bold text-red-400">
+                                                {tutors.filter(t => t.utilization > 80).length}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-400">Underutilized</div>
+                                            <div className="text-xl font-bold text-yellow-400">
+                                                {tutors.filter(t => t.utilization < 30).length}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Schedule Heatmap */}
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4 text-purple-400">
+                                    {selectedDay} Schedule Heatmap
+                                </h3>
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-9 gap-1 text-xs">
+                                        <div></div>
+                                        {timeSlots.morning.slice(0, 8).map(time => (
+                                            <div key={time} className="text-center text-gray-400">{time}</div>
+                                        ))}
+                                    </div>
+                                    {tutors.map(tutor => (
+                                        <div key={tutor.id} className="grid grid-cols-9 gap-1">
+                                            <div className="text-xs text-right pr-2 text-gray-400">
+                                                {tutor.name.split(' ')[1]}
+                                            </div>
+                                            {timeSlots.morning.slice(0, 8).map((time, i) => {
+                                                const intensity = Math.random();
+                                                const isBooked = intensity > 0.6;
+                                                const isHovered = hoveredTutor === tutor.id;
+                                                
+                                                return (
+                                                    <div
+                                                        key={time}
+                                                        className={`h-8 rounded transition-all ${
+                                                            isHovered ? 'scale-110 z-10' : ''
+                                                        }`}
+                                                        style={{
+                                                            background: isBooked 
+                                                                ? `rgba(239, 68, 68, ${intensity * 0.5})`
+                                                                : `rgba(34, 197, 94, ${0.3 - intensity * 0.2})`
+                                                        }}
+                                                        title={`${tutor.name} - ${time}: ${isBooked ? 'Booked' : 'Available'}`}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <div className="mt-4 flex items-center gap-4 text-sm text-gray-400">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 rounded bg-green-500/30"></div>
+                                        <span>Available</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 rounded bg-red-500/40"></div>
+                                        <span>Booked</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

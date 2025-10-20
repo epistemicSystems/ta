@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Journey - Interactive Flow</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: #030014;
+            color: #ffffff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'Space Mono', monospace;
+        }
+        
+        /* Journey path */
+        .journey-path {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .path-line {
+            stroke: url(#pathGradient);
+            stroke-width: 3;
+            fill: none;
+            stroke-dasharray: 2000;
+            stroke-dashoffset: 2000;
+            animation: drawPath 3s ease forwards;
+        }
+        
+        @keyframes drawPath {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+        
+        /* Journey nodes */
+        .journey-node {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+        
+        .journey-node-circle {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%,
+                rgba(99, 102, 241, 0.3),
+                rgba(79, 70, 229, 0.1));
+            border: 3px solid rgba(99, 102, 241, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+        
+        .journey-node.active .journey-node-circle {
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle at 30% 30%,
+                rgba(34, 197, 94, 0.4),
+                rgba(22, 163, 74, 0.2));
+            border-color: rgba(34, 197, 94, 0.8);
+            box-shadow: 0 0 60px rgba(34, 197, 94, 0.5);
+            animation: nodeActivate 0.6s ease-out;
+        }
+        
+        @keyframes nodeActivate {
+            0% {
+                transform: scale(0.8) rotate(0deg);
+            }
+            50% {
+                transform: scale(1.1) rotate(180deg);
+            }
+            100% {
+                transform: scale(1) rotate(360deg);
+            }
+        }
+        
+        .journey-node.completed .journey-node-circle {
+            background: radial-gradient(circle at 30% 30%,
+                rgba(168, 85, 247, 0.3),
+                rgba(139, 92, 246, 0.1));
+            border-color: rgba(168, 85, 247, 0.6);
+        }
+        
+        .journey-node-icon {
+            font-size: 36px;
+            z-index: 1;
+            transition: transform 0.3s;
+        }
+        
+        .journey-node:hover .journey-node-icon {
+            transform: scale(1.2) rotate(10deg);
+        }
+        
+        .journey-node-label {
+            margin-top: 12px;
+            font-weight: 600;
+            text-align: center;
+            opacity: 0;
+            animation: fadeInUp 0.5s ease forwards;
+            animation-delay: 0.3s;
+        }
+        
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(-5px);
+            }
+        }
+        
+        /* Progress waves */
+        .progress-wave {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid rgba(34, 197, 94, 0.4);
+            animation: waveExpand 2s infinite;
+        }
+        
+        @keyframes waveExpand {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+        
+        /* Interactive cards */
+        .step-card {
+            background: linear-gradient(135deg, 
+                rgba(255, 255, 255, 0.05), 
+                rgba(255, 255, 255, 0.02));
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 30px;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .step-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(99, 102, 241, 0.8), 
+                transparent);
+            animation: scanLine 3s infinite;
+        }
+        
+        @keyframes scanLine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        .step-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 60px rgba(99, 102, 241, 0.3);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        
+        .step-card.active {
+            background: linear-gradient(135deg, 
+                rgba(99, 102, 241, 0.1), 
+                rgba(79, 70, 229, 0.05));
+            border-color: rgba(99, 102, 241, 0.5);
+            animation: cardPulse 2s infinite;
+        }
+        
+        @keyframes cardPulse {
+            0%, 100% {
+                box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 60px rgba(99, 102, 241, 0.5);
+            }
+        }
+        
+        /* Animated metrics */
+        .metric-display {
+            display: inline-block;
+            padding: 8px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 12px;
+            margin: 4px;
+            transition: all 0.3s;
+        }
+        
+        .metric-display.highlight {
+            background: rgba(34, 197, 94, 0.2);
+            border-color: rgba(34, 197, 94, 0.5);
+            transform: scale(1.1);
+        }
+        
+        /* Constraint visualizer */
+        .constraint-bubble {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            margin: 4px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .constraint-bubble.satisfied {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.5);
+            animation: satisfiedPop 0.5s ease;
+        }
+        
+        @keyframes satisfiedPop {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        
+        .constraint-bubble.violated {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.5);
+            animation: violatedShake 0.5s;
+        }
+        
+        @keyframes violatedShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        /* Time selector */
+        .time-block {
+            position: relative;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            overflow: hidden;
+        }
+        
+        .time-block::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, 
+                rgba(99, 102, 241, 0.3), 
+                transparent);
+            transition: all 0.5s;
+            transform: translate(-50%, -50%);
+        }
+        
+        .time-block:hover::after {
+            width: 200%;
+            height: 200%;
+        }
+        
+        .time-block.selected {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: rgba(99, 102, 241, 0.5);
+            transform: scale(1.05);
+        }
+        
+        /* Tutor recommendation card */
+        .tutor-card {
+            position: relative;
+            padding: 20px;
+            background: linear-gradient(135deg,
+                rgba(255, 255, 255, 0.08),
+                rgba(255, 255, 255, 0.02));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            overflow: hidden;
+        }
+        
+        .tutor-card::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg,
+                #6366f1, #8b5cf6, #ec4899, #6366f1);
+            border-radius: 20px;
+            opacity: 0;
+            z-index: -1;
+            transition: opacity 0.4s;
+            animation: borderRotate 4s linear infinite;
+        }
+        
+        @keyframes borderRotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .tutor-card:hover::before {
+            opacity: 1;
+        }
+        
+        .tutor-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 30px 60px rgba(99, 102, 241, 0.4);
+        }
+        
+        /* Match score visualization */
+        .score-ring {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+        }
+        
+        .score-ring svg {
+            transform: rotate(-90deg);
+        }
+        
+        .score-ring-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 8;
+        }
+        
+        .score-ring-fill {
+            fill: none;
+            stroke: url(#scoreGradient);
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 377;
+            stroke-dashoffset: 377;
+            transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .score-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        /* Success animation */
+        .success-burst {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .success-particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: linear-gradient(45deg, #10b981, #22c55e);
+            animation: particleBurst 1s ease-out forwards;
+        }
+        
+        @keyframes particleBurst {
+            0% {
+                transform: translate(0, 0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(0);
+                opacity: 0;
+            }
+        }
+        
+        /* Flow indicators */
+        .flow-dot {
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            animation: flowMove 2s infinite;
+        }
+        
+        @keyframes flowMove {
+            0%, 100% {
+                transform: translateX(0);
+                opacity: 0.3;
+            }
+            50% {
+                transform: translateX(20px);
+                opacity: 1;
+            }
+        }
+        
+        /* Smooth transitions */
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.5s ease forwards;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        
+        // Journey steps
+        const journeySteps = [
+            { id: 1, label: 'Select Subject', icon: '📚', x: 150, y: 300 },
+            { id: 2, label: 'Apply Constraints', icon: '🔍', x: 350, y: 200 },
+            { id: 3, label: 'Find Matches', icon: '✨', x: 550, y: 250 },
+            { id: 4, label: 'Rank Options', icon: '📊', x: 750, y: 200 },
+            { id: 5, label: 'Book Session', icon: '✅', x: 950, y: 300 }
+        ];
+        
+        // Main App Component
+        function App() {
+            const [currentStep, setCurrentStep] = useState(1);
+            const [selectedSubject, setSelectedSubject] = useState(null);
+            const [selectedTime, setSelectedTime] = useState(null);
+            const [selectedTutor, setSelectedTutor] = useState(null);
+            const [constraints, setConstraints] = useState({
+                subject: false,
+                time: false,
+                availability: false,
+                preference: false
+            });
+            const [matchScore, setMatchScore] = useState(0);
+            const [showSuccess, setShowSuccess] = useState(false);
+            const [animatingMetrics, setAnimatingMetrics] = useState(false);
+            
+            const subjects = ['Mathematics', 'Physics', 'Chemistry', 'Biology'];
+            const timeSlots = [
+                { day: 'Mon', time: '10:00 AM', available: true },
+                { day: 'Tue', time: '2:00 PM', available: true },
+                { day: 'Wed', time: '4:00 PM', available: false },
+                { day: 'Thu', time: '11:00 AM', available: true },
+                { day: 'Fri', time: '3:00 PM', available: true }
+            ];
+            const tutors = [
+                { id: 1, name: 'Dr. Sarah Kim', rating: 4.9, matches: 92, specialty: 'Mathematics' },
+                { id: 2, name: 'Prof. James Liu', rating: 4.8, matches: 88, specialty: 'Physics' },
+                { id: 3, name: 'Emma Rodriguez', rating: 4.7, matches: 85, specialty: 'Chemistry' }
+            ];
+            
+            useEffect(() => {
+                // Update constraints based on selections
+                const newConstraints = {
+                    subject: selectedSubject !== null,
+                    time: selectedTime !== null,
+                    availability: selectedSubject && selectedTime,
+                    preference: selectedTutor !== null
+                };
+                setConstraints(newConstraints);
+                
+                // Calculate match score
+                const satisfied = Object.values(newConstraints).filter(Boolean).length;
+                setMatchScore(satisfied * 25);
+            }, [selectedSubject, selectedTime, selectedTutor]);
+            
+            const handleStepClick = useCallback((stepId) => {
+                if (stepId <= currentStep + 1) {
+                    setCurrentStep(stepId);
+                    setAnimatingMetrics(true);
+                    setTimeout(() => setAnimatingMetrics(false), 1000);
+                }
+            }, [currentStep]);
+            
+            const handleBookingComplete = useCallback(() => {
+                setShowSuccess(true);
+                setTimeout(() => {
+                    setShowSuccess(false);
+                    // Reset for new journey
+                    setCurrentStep(1);
+                    setSelectedSubject(null);
+                    setSelectedTime(null);
+                    setSelectedTutor(null);
+                }, 3000);
+            }, []);
+            
+            return (
+                <div className="min-h-screen p-8 relative">
+                    {/* Journey Path SVG */}
+                    <svg className="journey-path">
+                        <defs>
+                            <linearGradient id="pathGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5" />
+                                <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.8" />
+                                <stop offset="100%" stopColor="#ec4899" stopOpacity="0.5" />
+                            </linearGradient>
+                            <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#10b981" />
+                                <stop offset="100%" stopColor="#22c55e" />
+                            </linearGradient>
+                        </defs>
+                        <path
+                            className="path-line"
+                            d="M 150 300 Q 250 100, 350 200 T 550 250 Q 650 150, 750 200 T 950 300"
+                        />
+                    </svg>
+                    
+                    {/* Header */}
+                    <header className="text-center mb-12 relative z-10">
+                        <h1 className="text-5xl font-bold mb-4">
+                            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                Student Journey
+                            </span>
+                        </h1>
+                        <p className="text-gray-400">Interactive booking experience</p>
+                    </header>
+                    
+                    {/* Journey Nodes */}
+                    <div className="relative" style={{ height: '400px' }}>
+                        {journeySteps.map((step, index) => (
+                            <JourneyNode
+                                key={step.id}
+                                step={step}
+                                isActive={currentStep === step.id}
+                                isCompleted={currentStep > step.id}
+                                onClick={() => handleStepClick(step.id)}
+                            />
+                        ))}
+                    </div>
+                    
+                    {/* Step Content */}
+                    <div className="max-w-4xl mx-auto mt-16">
+                        {currentStep === 1 && (
+                            <StepOne
+                                subjects={subjects}
+                                selectedSubject={selectedSubject}
+                                onSelectSubject={setSelectedSubject}
+                                onNext={() => setCurrentStep(2)}
+                            />
+                        )}
+                        
+                        {currentStep === 2 && (
+                            <StepTwo
+                                constraints={constraints}
+                                animating={animatingMetrics}
+                                onNext={() => setCurrentStep(3)}
+                            />
+                        )}
+                        
+                        {currentStep === 3 && (
+                            <StepThree
+                                timeSlots={timeSlots}
+                                selectedTime={selectedTime}
+                                onSelectTime={setSelectedTime}
+                                onNext={() => setCurrentStep(4)}
+                            />
+                        )}
+                        
+                        {currentStep === 4 && (
+                            <StepFour
+                                tutors={tutors}
+                                selectedTutor={selectedTutor}
+                                onSelectTutor={setSelectedTutor}
+                                matchScore={matchScore}
+                                onNext={() => setCurrentStep(5)}
+                            />
+                        )}
+                        
+                        {currentStep === 5 && (
+                            <StepFive
+                                selectedSubject={selectedSubject}
+                                selectedTime={selectedTime}
+                                selectedTutor={selectedTutor}
+                                matchScore={matchScore}
+                                onConfirm={handleBookingComplete}
+                            />
+                        )}
+                    </div>
+                    
+                    {/* Success Animation */}
+                    {showSuccess && <SuccessAnimation />}
+                </div>
+            );
+        }
+        
+        // Journey Node Component
+        function JourneyNode({ step, isActive, isCompleted, onClick }) {
+            return (
+                <div
+                    className={`journey-node ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
+                    style={{ left: step.x - 90, top: step.y - 90 }}
+                    onClick={onClick}
+                >
+                    <div className="journey-node-circle">
+                        <div className="journey-node-icon">{step.icon}</div>
+                        {isActive && <div className="progress-wave" />}
+                    </div>
+                    <div className="journey-node-label">{step.label}</div>
+                </div>
+            );
+        }
+        
+        // Step 1: Select Subject
+        function StepOne({ subjects, selectedSubject, onSelectSubject, onNext }) {
+            return (
+                <div className="fade-in">
+                    <h2 className="text-3xl font-bold mb-8">Choose Your Subject</h2>
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                        {subjects.map(subject => (
+                            <div
+                                key={subject}
+                                className={`step-card ${selectedSubject === subject ? 'active' : ''}`}
+                                onClick={() => onSelectSubject(subject)}
+                            >
+                                <h3 className="text-xl font-semibold mb-2">{subject}</h3>
+                                <p className="text-gray-400 text-sm">
+                                    {Math.floor(Math.random() * 20 + 10)} tutors available
+                                </p>
+                                <div className="mt-4">
+                                    <div className="flow-dot" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button
+                        className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                            selectedSubject 
+                                ? 'bg-blue-500 hover:bg-blue-600' 
+                                : 'bg-gray-700 cursor-not-allowed'
+                        }`}
+                        onClick={onNext}
+                        disabled={!selectedSubject}
+                    >
+                        Continue →
+                    </button>
+                </div>
+            );
+        }
+        
+        // Step 2: Apply Constraints
+        function StepTwo({ constraints, animating, onNext }) {
+            return (
+                <div className="fade-in">
+                    <h2 className="text-3xl font-bold mb-8">Applying Constraints</h2>
+                    <div className="flex flex-wrap gap-3 mb-8">
+                        {Object.entries(constraints).map(([key, value]) => (
+                            <div
+                                key={key}
+                                className={`constraint-bubble ${
+                                    value ? 'satisfied' : ''
+                                } ${animating ? 'animate-pulse' : ''}`}
+                            >
+                                <span className={value ? 'text-green-400' : 'text-gray-400'}>
+                                    {value ? '✓' : '○'}
+                                </span>
+                                <span className="capitalize">{key.replace('_', ' ')}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-6 bg-gray-900/50 rounded-xl mb-8">
+                        <div className="mono text-sm text-gray-400">
+                            <div>feasible(student, tutor, day, slot) :-</div>
+                            <div className="ml-8">teaches(tutor, subject),</div>
+                            <div className="ml-8">available(tutor, day, slot),</div>
+                            <div className="ml-8">student_available(day, slot),</div>
+                            <div className="ml-8">!existing_booking(tutor, day, slot).</div>
+                        </div>
+                    </div>
+                    <button
+                        className="px-8 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg font-semibold transition-all"
+                        onClick={onNext}
+                    >
+                        Find Matches →
+                    </button>
+                </div>
+            );
+        }
+        
+        // Step 3: Find Matches
+        function StepThree({ timeSlots, selectedTime, onSelectTime, onNext }) {
+            return (
+                <div className="fade-in">
+                    <h2 className="text-3xl font-bold mb-8">Select Time Slot</h2>
+                    <div className="grid grid-cols-3 gap-4 mb-8">
+                        {timeSlots.map((slot, index) => (
+                            <div
+                                key={index}
+                                className={`time-block ${
+                                    selectedTime === index ? 'selected' : ''
+                                } ${!slot.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                onClick={() => slot.available && onSelectTime(index)}
+                            >
+                                <div className="font-semibold">{slot.day}</div>
+                                <div className="text-sm text-gray-400">{slot.time}</div>
+                                {!slot.available && (
+                                    <div className="text-xs text-red-400 mt-1">Unavailable</div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="metric-display">
+                            <span className="text-gray-400">Found:</span>
+                            <span className="ml-2 font-bold">12 matches</span>
+                        </div>
+                        <div className="metric-display highlight">
+                            <span className="text-gray-400">Available:</span>
+                            <span className="ml-2 font-bold">8 tutors</span>
+                        </div>
+                    </div>
+                    <button
+                        className={`mt-8 px-8 py-3 rounded-lg font-semibold transition-all ${
+                            selectedTime !== null
+                                ? 'bg-blue-500 hover:bg-blue-600' 
+                                : 'bg-gray-700 cursor-not-allowed'
+                        }`}
+                        onClick={onNext}
+                        disabled={selectedTime === null}
+                    >
+                        Rank Options →
+                    </button>
+                </div>
+            );
+        }
+        
+        // Step 4: Rank Options
+        function StepFour({ tutors, selectedTutor, onSelectTutor, matchScore, onNext }) {
+            return (
+                <div className="fade-in">
+                    <h2 className="text-3xl font-bold mb-8">Top Recommendations</h2>
+                    <div className="grid grid-cols-3 gap-6 mb-8">
+                        {tutors.map((tutor, index) => (
+                            <div
+                                key={tutor.id}
+                                className={`tutor-card ${selectedTutor === tutor.id ? 'ring-2 ring-blue-500' : ''}`}
+                                onClick={() => onSelectTutor(tutor.id)}
+                            >
+                                <div className="text-center mb-4">
+                                    <div className="text-3xl mb-2">{index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
+                                    <h3 className="text-xl font-semibold">{tutor.name}</h3>
+                                    <p className="text-sm text-gray-400">{tutor.specialty}</p>
+                                </div>
+                                <div className="score-ring">
+                                    <svg width="120" height="120">
+                                        <circle cx="60" cy="60" r="56" className="score-ring-bg" />
+                                        <circle 
+                                            cx="60" 
+                                            cy="60" 
+                                            r="56" 
+                                            className="score-ring-fill"
+                                            style={{
+                                                strokeDashoffset: 377 - (377 * tutor.matches / 100)
+                                            }}
+                                        />
+                                    </svg>
+                                    <div className="score-text">{tutor.matches}%</div>
+                                </div>
+                                <div className="mt-4 flex justify-between text-sm">
+                                    <span>⭐ {tutor.rating}</span>
+                                    <span className="text-gray-400">Match Score</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button
+                        className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                            selectedTutor 
+                                ? 'bg-blue-500 hover:bg-blue-600' 
+                                : 'bg-gray-700 cursor-not-allowed'
+                        }`}
+                        onClick={onNext}
+                        disabled={!selectedTutor}
+                    >
+                        Book Session →
+                    </button>
+                </div>
+            );
+        }
+        
+        // Step 5: Book Session
+        function StepFive({ selectedSubject, selectedTime, selectedTutor, matchScore, onConfirm }) {
+            const tutor = { id: 1, name: 'Dr. Sarah Kim', rating: 4.9 };
+            const timeSlot = { day: 'Tue', time: '2:00 PM' };
+            
+            return (
+                <div className="fade-in">
+                    <h2 className="text-3xl font-bold mb-8">Confirm Your Booking</h2>
+                    <div className="step-card active p-8">
+                        <div className="grid grid-cols-2 gap-8">
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4">Session Details</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-gray-400">Subject:</span>
+                                        <span className="ml-2 font-semibold">{selectedSubject || 'Mathematics'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-400">Tutor:</span>
+                                        <span className="ml-2 font-semibold">{tutor.name}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-400">Time:</span>
+                                        <span className="ml-2 font-semibold">{timeSlot.day} at {timeSlot.time}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-400">Duration:</span>
+                                        <span className="ml-2 font-semibold">60 minutes</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-semibold mb-4">Match Quality</h3>
+                                <div className="score-ring">
+                                    <svg width="120" height="120">
+                                        <circle cx="60" cy="60" r="56" className="score-ring-bg" />
+                                        <circle 
+                                            cx="60" 
+                                            cy="60" 
+                                            r="56" 
+                                            className="score-ring-fill"
+                                            style={{
+                                                strokeDashoffset: 377 - (377 * matchScore / 100)
+                                            }}
+                                        />
+                                    </svg>
+                                    <div className="score-text">{matchScore}%</div>
+                                </div>
+                                <p className="text-center mt-2 text-sm text-gray-400">
+                                    Excellent Match!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        className="mt-8 px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg font-semibold text-lg transition-all transform hover:scale-105"
+                        onClick={onConfirm}
+                    >
+                        Confirm Booking ✨
+                    </button>
+                </div>
+            );
+        }
+        
+        // Success Animation Component
+        function SuccessAnimation() {
+            const particles = Array.from({ length: 20 }, (_, i) => ({
+                id: i,
+                tx: (Math.random() - 0.5) * 400,
+                ty: (Math.random() - 0.5) * 400
+            }));
+            
+            return (
+                <div className="success-burst">
+                    {particles.map(p => (
+                        <div
+                            key={p.id}
+                            className="success-particle"
+                            style={{
+                                '--tx': `${p.tx}px`,
+                                '--ty': `${p.ty}px`,
+                                animationDelay: `${p.id * 0.05}s`
+                            }}
+                        />
+                    ))}
+                    <div className="text-center">
+                        <div className="text-6xl mb-4">🎉</div>
+                        <h2 className="text-3xl font-bold text-green-400">Booking Confirmed!</h2>
+                        <p className="text-gray-400 mt-2">Check your email for details</p>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

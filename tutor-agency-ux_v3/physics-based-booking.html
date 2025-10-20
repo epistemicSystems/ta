@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics-Based Booking Interface</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Outfit', system-ui, sans-serif;
+            background: linear-gradient(180deg, #0f0f1e 0%, #1a1a2e 50%, #16213e 100%);
+            color: #ffffff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Spring physics draggable elements */
+        .draggable-node {
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            border-radius: 70px;
+            background: radial-gradient(circle at 30% 30%, 
+                rgba(99, 102, 241, 0.4), 
+                rgba(79, 70, 229, 0.2));
+            border: 2px solid rgba(99, 102, 241, 0.6);
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+            user-select: none;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 60px rgba(99, 102, 241, 0.2);
+        }
+        
+        .draggable-node:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+        }
+        
+        .draggable-node.student {
+            background: radial-gradient(circle at 30% 30%, 
+                rgba(34, 197, 94, 0.4), 
+                rgba(22, 163, 74, 0.2));
+            border-color: rgba(34, 197, 94, 0.6);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 60px rgba(34, 197, 94, 0.2);
+        }
+        
+        .draggable-node.tutor {
+            background: radial-gradient(circle at 30% 30%, 
+                rgba(236, 72, 153, 0.4), 
+                rgba(219, 39, 119, 0.2));
+            border-color: rgba(236, 72, 153, 0.6);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 60px rgba(236, 72, 153, 0.2);
+        }
+        
+        .draggable-node.timeslot {
+            width: 100px;
+            height: 100px;
+            border-radius: 20px;
+            background: radial-gradient(circle at center, 
+                rgba(251, 191, 36, 0.3), 
+                rgba(245, 158, 11, 0.1));
+            border-color: rgba(251, 191, 36, 0.5);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 40px rgba(251, 191, 36, 0.2);
+        }
+        
+        /* Constraint springs */
+        .spring-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(99, 102, 241, 0.6), 
+                rgba(99, 102, 241, 0.6),
+                transparent);
+            transform-origin: left center;
+            pointer-events: none;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
+        }
+        
+        .spring-line.active {
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(34, 197, 94, 0.8), 
+                rgba(34, 197, 94, 0.8),
+                transparent);
+            height: 3px;
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+            animation: spring-pulse 1s infinite;
+        }
+        
+        @keyframes spring-pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+        
+        .spring-line.violated {
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(239, 68, 68, 0.8), 
+                rgba(239, 68, 68, 0.8),
+                transparent);
+            animation: spring-shake 0.3s infinite;
+        }
+        
+        @keyframes spring-shake {
+            0%, 100% { transform: translateY(0); }
+            25% { transform: translateY(-1px); }
+            75% { transform: translateY(1px); }
+        }
+        
+        /* Magnetic drop zones */
+        .drop-zone {
+            position: absolute;
+            border: 3px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+        
+        .drop-zone.active {
+            border-color: rgba(34, 197, 94, 0.6);
+            background: rgba(34, 197, 94, 0.05);
+            box-shadow: 0 0 40px rgba(34, 197, 94, 0.3);
+            animation: zone-pulse 2s infinite;
+        }
+        
+        @keyframes zone-pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 0.5;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 1;
+            }
+        }
+        
+        /* Force field visualization */
+        .force-field {
+            position: absolute;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        
+        .force-field.visible {
+            opacity: 1;
+        }
+        
+        .force-ripple {
+            position: absolute;
+            border: 2px solid rgba(99, 102, 241, 0.4);
+            border-radius: 50%;
+            animation: ripple-expand 2s infinite;
+        }
+        
+        @keyframes ripple-expand {
+            0% {
+                width: 20px;
+                height: 20px;
+                opacity: 0.8;
+            }
+            100% {
+                width: 200px;
+                height: 200px;
+                opacity: 0;
+                transform: translate(-90px, -90px);
+            }
+        }
+        
+        /* Gravity wells */
+        .gravity-well {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: radial-gradient(circle at center,
+                rgba(99, 102, 241, 0.2) 0%,
+                rgba(99, 102, 241, 0.1) 30%,
+                rgba(99, 102, 241, 0.05) 60%,
+                transparent 100%);
+            pointer-events: none;
+            animation: gravity-rotate 20s linear infinite;
+        }
+        
+        @keyframes gravity-rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Elastic connections */
+        .elastic-band {
+            position: absolute;
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(168, 85, 247, 0.4),
+                rgba(168, 85, 247, 0.4),
+                transparent);
+            height: 4px;
+            transform-origin: left center;
+            pointer-events: none;
+            border-radius: 2px;
+        }
+        
+        .elastic-band.stretched {
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(239, 68, 68, 0.6),
+                rgba(239, 68, 68, 0.6),
+                transparent);
+            animation: elastic-vibrate 0.2s infinite;
+        }
+        
+        @keyframes elastic-vibrate {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(1.2); }
+        }
+        
+        /* Collision feedback */
+        .collision-burst {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: radial-gradient(circle at center,
+                rgba(251, 191, 36, 0.8),
+                transparent);
+            pointer-events: none;
+            animation: burst 0.5s ease-out;
+        }
+        
+        @keyframes burst {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(3);
+                opacity: 0;
+            }
+        }
+        
+        /* Constraint satisfaction indicators */
+        .satisfaction-meter {
+            position: fixed;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 60px;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .satisfaction-fill {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: linear-gradient(180deg,
+                rgba(34, 197, 94, 1),
+                rgba(34, 197, 94, 0.6));
+            border-radius: 20px;
+            transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Match quality visualization */
+        .match-quality {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 20px 40px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+        
+        .match-quality.excellent {
+            border-color: rgba(34, 197, 94, 0.6);
+            box-shadow: 0 0 40px rgba(34, 197, 94, 0.4);
+        }
+        
+        .match-quality.good {
+            border-color: rgba(251, 191, 36, 0.6);
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.4);
+        }
+        
+        .match-quality.poor {
+            border-color: rgba(239, 68, 68, 0.6);
+            box-shadow: 0 0 40px rgba(239, 68, 68, 0.4);
+        }
+        
+        /* Interactive formula */
+        .formula-container {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 20px 30px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .formula-part {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 0 4px;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        
+        .formula-part.active {
+            background: rgba(34, 197, 94, 0.3);
+            border-color: rgba(34, 197, 94, 0.6);
+            transform: scale(1.1);
+        }
+        
+        /* Particle effects */
+        .particle-system {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        
+        // Physics constants
+        const SPRING_STRENGTH = 0.02;
+        const DAMPING = 0.95;
+        const REPULSION_STRENGTH = 5000;
+        const ATTRACTION_STRENGTH = 0.01;
+        const MAX_VELOCITY = 10;
+        
+        // Main App Component
+        function App() {
+            const [nodes, setNodes] = useState([
+                { id: 'student1', type: 'student', x: 200, y: 300, vx: 0, vy: 0, label: 'Alex', subject: 'Math' },
+                { id: 'student2', type: 'student', x: 250, y: 400, vx: 0, vy: 0, label: 'Bailey', subject: 'Physics' },
+                { id: 'tutor1', type: 'tutor', x: 600, y: 250, vx: 0, vy: 0, label: 'Dr. Kim', subjects: ['Math', 'Physics'] },
+                { id: 'tutor2', type: 'tutor', x: 650, y: 350, vx: 0, vy: 0, label: 'James', subjects: ['Physics'] },
+                { id: 'tutor3', type: 'tutor', x: 700, y: 450, vx: 0, vy: 0, label: 'Emma', subjects: ['Chemistry'] },
+                { id: 'time1', type: 'timeslot', x: 400, y: 200, vx: 0, vy: 0, label: 'Mon 10am' },
+                { id: 'time2', type: 'timeslot', x: 450, y: 300, vx: 0, vy: 0, label: 'Tue 2pm' },
+                { id: 'time3', type: 'timeslot', x: 400, y: 400, vx: 0, vy: 0, label: 'Wed 4pm' }
+            ]);
+            
+            const [connections, setConnections] = useState([]);
+            const [draggedNode, setDraggedNode] = useState(null);
+            const [matchQuality, setMatchQuality] = useState(0);
+            const [satisfactionLevel, setSatisfactionLevel] = useState(50);
+            const [particles, setParticles] = useState([]);
+            const containerRef = useRef(null);
+            const animationFrameRef = useRef(null);
+            const mousePos = useRef({ x: 0, y: 0 });
+            
+            // Physics simulation
+            const updatePhysics = useCallback(() => {
+                setNodes(prevNodes => {
+                    const newNodes = [...prevNodes];
+                    
+                    // Apply forces
+                    newNodes.forEach((node, i) => {
+                        if (draggedNode === node.id) return;
+                        
+                        // Reset forces
+                        let fx = 0, fy = 0;
+                        
+                        // Repulsion between nodes
+                        newNodes.forEach((other, j) => {
+                            if (i === j) return;
+                            const dx = node.x - other.x;
+                            const dy = node.y - other.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance > 0 && distance < 200) {
+                                const force = REPULSION_STRENGTH / (distance * distance);
+                                fx += (dx / distance) * force;
+                                fy += (dy / distance) * force;
+                            }
+                        });
+                        
+                        // Attraction to center
+                        const centerX = 500;
+                        const centerY = 350;
+                        const dx = centerX - node.x;
+                        const dy = centerY - node.y;
+                        fx += dx * ATTRACTION_STRENGTH;
+                        fy += dy * ATTRACTION_STRENGTH;
+                        
+                        // Update velocity
+                        node.vx = (node.vx + fx) * DAMPING;
+                        node.vy = (node.vy + fy) * DAMPING;
+                        
+                        // Limit velocity
+                        const velocity = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
+                        if (velocity > MAX_VELOCITY) {
+                            node.vx = (node.vx / velocity) * MAX_VELOCITY;
+                            node.vy = (node.vy / velocity) * MAX_VELOCITY;
+                        }
+                        
+                        // Update position
+                        node.x += node.vx;
+                        node.y += node.vy;
+                        
+                        // Boundary collision
+                        if (node.x < 70) { node.x = 70; node.vx *= -0.5; }
+                        if (node.x > 930) { node.x = 930; node.vx *= -0.5; }
+                        if (node.y < 70) { node.y = 70; node.vy *= -0.5; }
+                        if (node.y > 630) { node.y = 630; node.vy *= -0.5; }
+                    });
+                    
+                    return newNodes;
+                });
+            }, [draggedNode]);
+            
+            // Check connections and constraints
+            const updateConnections = useCallback(() => {
+                const newConnections = [];
+                
+                nodes.forEach(student => {
+                    if (student.type !== 'student') return;
+                    
+                    nodes.forEach(tutor => {
+                        if (tutor.type !== 'tutor') return;
+                        
+                        nodes.forEach(time => {
+                            if (time.type !== 'timeslot') return;
+                            
+                            const studentDist = Math.sqrt(
+                                Math.pow(student.x - time.x, 2) + 
+                                Math.pow(student.y - time.y, 2)
+                            );
+                            
+                            const tutorDist = Math.sqrt(
+                                Math.pow(tutor.x - time.x, 2) + 
+                                Math.pow(tutor.y - time.y, 2)
+                            );
+                            
+                            if (studentDist < 150 && tutorDist < 150) {
+                                const canTeach = tutor.subjects?.includes(student.subject);
+                                newConnections.push({
+                                    student: student.id,
+                                    tutor: tutor.id,
+                                    time: time.id,
+                                    quality: canTeach ? 'active' : 'violated',
+                                    studentPos: { x: student.x, y: student.y },
+                                    tutorPos: { x: tutor.x, y: tutor.y },
+                                    timePos: { x: time.x, y: time.y }
+                                });
+                            }
+                        });
+                    });
+                });
+                
+                setConnections(newConnections);
+                
+                // Update match quality
+                const validMatches = newConnections.filter(c => c.quality === 'active');
+                setMatchQuality(validMatches.length);
+                setSatisfactionLevel(Math.min(100, 30 + validMatches.length * 20));
+            }, [nodes]);
+            
+            // Animation loop
+            useEffect(() => {
+                const animate = () => {
+                    updatePhysics();
+                    updateConnections();
+                    animationFrameRef.current = requestAnimationFrame(animate);
+                };
+                animate();
+                
+                return () => {
+                    if (animationFrameRef.current) {
+                        cancelAnimationFrame(animationFrameRef.current);
+                    }
+                };
+            }, [updatePhysics, updateConnections]);
+            
+            // Generate particles
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setParticles(prev => {
+                        const newParticles = prev.filter(p => p.life > 0).map(p => ({
+                            ...p,
+                            x: p.x + p.vx,
+                            y: p.y + p.vy,
+                            life: p.life - 1
+                        }));
+                        
+                        if (Math.random() > 0.7) {
+                            newParticles.push({
+                                id: Date.now(),
+                                x: Math.random() * 1000,
+                                y: 700,
+                                vx: (Math.random() - 0.5) * 2,
+                                vy: -Math.random() * 3 - 1,
+                                life: 100
+                            });
+                        }
+                        
+                        return newParticles;
+                    });
+                }, 50);
+                
+                return () => clearInterval(interval);
+            }, []);
+            
+            const handleNodeDrag = useCallback((nodeId, e) => {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                setNodes(prev => prev.map(n => 
+                    n.id === nodeId 
+                        ? { ...n, x, y, vx: 0, vy: 0 }
+                        : n
+                ));
+            }, []);
+            
+            const handleMouseMove = useCallback((e) => {
+                if (draggedNode) {
+                    handleNodeDrag(draggedNode, e);
+                }
+                
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (rect) {
+                    mousePos.current = {
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top
+                    };
+                }
+            }, [draggedNode, handleNodeDrag]);
+            
+            return (
+                <div className="min-h-screen relative">
+                    {/* Particle System */}
+                    <div className="particle-system">
+                        {particles.map(p => (
+                            <div
+                                key={p.id}
+                                className="particle"
+                                style={{
+                                    left: p.x,
+                                    top: p.y,
+                                    opacity: p.life / 100 * 0.5
+                                }}
+                            />
+                        ))}
+                    </div>
+                    
+                    {/* Header */}
+                    <header className="relative z-20 p-8 text-center">
+                        <h1 className="text-5xl font-bold mb-4">
+                            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                Physics-Based Booking
+                            </span>
+                        </h1>
+                        <p className="text-gray-400">
+                            Drag students, tutors, and time slots to create matches
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2 mono">
+                            Nodes attract and repel • Constraints create connections
+                        </p>
+                    </header>
+                    
+                    {/* Match Quality Indicator */}
+                    <div className={`match-quality ${
+                        matchQuality >= 3 ? 'excellent' : 
+                        matchQuality >= 1 ? 'good' : 
+                        'poor'
+                    }`}>
+                        <div className="text-center">
+                            <div className="text-2xl font-bold">{matchQuality} Matches</div>
+                            <div className="text-sm text-gray-400">
+                                {matchQuality >= 3 ? 'Excellent' : 
+                                 matchQuality >= 1 ? 'Good' : 
+                                 'Keep connecting...'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Satisfaction Meter */}
+                    <div className="satisfaction-meter">
+                        <div 
+                            className="satisfaction-fill"
+                            style={{ height: `${satisfactionLevel}%` }}
+                        />
+                    </div>
+                    
+                    {/* Main Canvas */}
+                    <div 
+                        ref={containerRef}
+                        className="relative mx-auto"
+                        style={{ width: '1000px', height: '700px' }}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={() => setDraggedNode(null)}
+                        onMouseLeave={() => setDraggedNode(null)}
+                    >
+                        {/* Gravity Wells */}
+                        <div className="gravity-well" style={{ left: 350, top: 200 }} />
+                        
+                        {/* Drop Zones */}
+                        <div 
+                            className={`drop-zone ${connections.length > 0 ? 'active' : ''}`}
+                            style={{
+                                left: 300,
+                                top: 150,
+                                width: 400,
+                                height: 400
+                            }}
+                        />
+                        
+                        {/* Connections */}
+                        {connections.map((conn, i) => (
+                            <React.Fragment key={i}>
+                                {/* Student to Time */}
+                                <ConnectionLine
+                                    start={conn.studentPos}
+                                    end={conn.timePos}
+                                    type={conn.quality}
+                                />
+                                {/* Tutor to Time */}
+                                <ConnectionLine
+                                    start={conn.tutorPos}
+                                    end={conn.timePos}
+                                    type={conn.quality}
+                                />
+                            </React.Fragment>
+                        ))}
+                        
+                        {/* Nodes */}
+                        {nodes.map(node => (
+                            <DraggableNode
+                                key={node.id}
+                                node={node}
+                                isDragging={draggedNode === node.id}
+                                onMouseDown={() => setDraggedNode(node.id)}
+                            />
+                        ))}
+                    </div>
+                    
+                    {/* Live Formula */}
+                    <div className="formula-container">
+                        <div className="mono text-sm">
+                            <span className="formula-part">Students({nodes.filter(n => n.type === 'student').length})</span>
+                            <span className="text-gray-400 mx-2">×</span>
+                            <span className="formula-part">Tutors({nodes.filter(n => n.type === 'tutor').length})</span>
+                            <span className="text-gray-400 mx-2">×</span>
+                            <span className="formula-part">Slots({nodes.filter(n => n.type === 'timeslot').length})</span>
+                            <span className="text-gray-400 mx-2">→</span>
+                            <span className={`formula-part ${matchQuality > 0 ? 'active' : ''}`}>
+                                {matchQuality} Valid
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        // Draggable Node Component
+        function DraggableNode({ node, isDragging, onMouseDown }) {
+            return (
+                <div
+                    className={`draggable-node ${node.type}`}
+                    style={{
+                        left: node.x - 70,
+                        top: node.y - 70,
+                        transform: isDragging ? 'scale(1.1)' : 'scale(1)',
+                        zIndex: isDragging ? 100 : 10
+                    }}
+                    onMouseDown={onMouseDown}
+                >
+                    <div className="text-center">
+                        <div className="font-semibold text-lg">{node.label}</div>
+                        {node.subject && (
+                            <div className="text-xs mt-1 opacity-80">{node.subject}</div>
+                        )}
+                        {node.subjects && (
+                            <div className="text-xs mt-1 opacity-80">
+                                {node.subjects.join(', ')}
+                            </div>
+                        )}
+                    </div>
+                    
+                    {isDragging && (
+                        <div className="force-field visible">
+                            <div className="force-ripple" />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        // Connection Line Component
+        function ConnectionLine({ start, end, type }) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            const stretched = length > 200;
+            
+            return (
+                <div
+                    className={`${stretched ? 'elastic-band stretched' : 'spring-line'} ${type}`}
+                    style={{
+                        left: start.x,
+                        top: start.y,
+                        width: length,
+                        transform: `rotate(${angle}deg)`
+                    }}
+                />
+            );
+        }
+        
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
